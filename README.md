@@ -1,4 +1,4 @@
-# Simple_Solar_MQTT
+# Simple_Solar_MQTT_Watch
 This is a basic Arduino C++ demo application using a unique blockchain authenticated MQTT access to receive [Solar.org](https://solar.org/) blockchain events.
 This project is designed to run the Lilygo T-Watch 2020. Blockchain event packets are sent to the serial port as ASCII text for display on terminal program running on PC. Blockchain messages are also displayed on the watch display.
 
