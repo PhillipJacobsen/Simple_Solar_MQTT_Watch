@@ -34,6 +34,8 @@ You need to increase max packet size from 128 to 4096 via this line in \Arduino\
   #define MQTT_MAX_PACKET_SIZE 4096  //default 128
 
 ### 9. Select TTGO T-Watch as the board
+![PXL_20221118_070839980](https://user-images.githubusercontent.com/33669966/202642486-18b65980-0e54-4965-917b-058c36c7ece3.jpg)
+![PXL_20221118_070653762](https://user-images.githubusercontent.com/33669966/202642497-ff49bdf8-18e6-4e75-9969-0e0d91c80f1a.jpg)
 
 ### 10. Open Serial Port Monitor and change baudrate to 115200
 
