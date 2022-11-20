@@ -30,18 +30,24 @@
 
 #include "time.h"  // required for internal clock to syncronize with NTP server
 
-#include <ArduinoJson.h>
+#include <ArduinoJson.h>  // JSON parsing
 
-#include "bitmap.h"  //Soloar Logo bitmap stored in program memory
+#include "bitmap.h"  //Solar Logo bitmap stored in program memory
+
+#include <HTTPClient.h>  // http client
 
 // RGB565 Color Definitions
 // This is a good tool for color conversions into RGB565 format
 // http://www.barth-dev.de/online/rgb565-color-picker/
-#define SolarOrange 0xE222  // 0xEB06
+#define SolarOrange 0xE222
 
 //Frequency at which the battery level is updated on the screen
 uint32_t UpdateInterval_Battery = 10000;  // 10 seconds
 uint32_t previousUpdateTime_Battery = millis();
+
+//Frequency at which the Solar wallet baln is updated on the screen
+uint32_t UpdateInterval_Balance = 10000;  // 10 seconds
+uint32_t previousUpdateTime_Balance = millis();
 
 /********************************************************************************
     Watch 2020 V1 Configuration
@@ -117,8 +123,10 @@ void Block_Applied_Handler(const String& payload) {
 
   Serial.println();
 
-  tft->setCursor(5, 50);
-  tft->print("New Block with height ");
+  tft->setCursor(0, 100);
+  tft->setTextFont(2);
+  tft->setTextSize(2);
+  tft->print("Block ");
   tft->print(data_height);
 }
 
@@ -145,7 +153,9 @@ void Transaction_Applied_Handler(const String& payload) {
 
   Serial.println();
 
-  tft->setCursor(5, 100);
+  tft->setCursor(0, 180);
+  tft->setTextFont(2);
+  tft->setTextSize(1);
   tft->println("New Transaction sent by address");
   tft->print(" ");
   tft->print(data_senderId);
@@ -184,10 +194,10 @@ void Round_Missed_Handler(const String& payload) {
 
   Serial.println();
 
-  tft->setCursor(5, 150);
-  tft->print("Delegate ");
-  tft->print(data_delegate_address);
-  tft->print(" missed a block! ");
+  // tft->setCursor(225, 150);
+  // tft->print("Delegate ");
+  // tft->print(data_delegate_address);
+  // tft->print(" missed a block! ");
 }
 
 /********************************************************************************
@@ -252,6 +262,8 @@ void StateMachine() {
           Serial.print(state);
           Serial.print("  WiFi Connected to IP address: ");
           Serial.println(WiFi.localIP());
+          previousUpdateTime_Battery = millis() - UpdateInterval_Battery;  //turn back time so battery level updates the first time running through the main loop
+          previousUpdateTime_Balance = millis() - UpdateInterval_Balance;  //turn back time so wallet balance updates the first time running through the main loop
         } else {
           state = STATE_0;
         }
@@ -271,6 +283,7 @@ void StateMachine() {
           Serial.println("  WiFi Disconnected");
         } else if (WiFiMQTTclient.isMqttConnected()) {  //wait for MQTT connect
           state = STATE_2;
+          //ttgo->motor->onec();  // Pulse Watch Vibration Motor. For some reason the screen dims after running the motor
           Serial.print("\nState: ");
           Serial.print(state);
           Serial.print("  MQTT Connected at local time: ");
@@ -313,13 +326,93 @@ void StateMachine() {
   }
 }
 
+void GetBalance() {
+  if (WiFiMQTTclient.isWifiConnected()) {
+    if (millis() - previousUpdateTime_Balance > UpdateInterval_Balance) {
+      previousUpdateTime_Balance += UpdateInterval_Balance;
+      HTTPClient http;
+      String serverPath = serverName + "wallets/" + WALLET_ADDRESS;
+      //String serverPath = serverName + "node/status";
+      // Your Domain name with URL path or IP address with path
+      http.begin(serverPath.c_str());
+
+      // Send HTTP GET request
+      int httpResponseCode = http.GET();
+
+      if (httpResponseCode > 0) {
+        Serial.print("HTTP Response code: ");
+        Serial.println(httpResponseCode);
+        String payload = http.getString();
+        Serial.println(payload);
+        Serial.println();
+
+        DeserializationError error = deserializeJson(doc, payload);
+        if (error) {
+          Serial.print(F("deserializeJson() failed: "));
+          Serial.println(error.f_str());
+          return;
+        }
+        JsonObject data = doc["data"];
+        const char* data_balance = data["balance"];  // "2552805450"
+        Serial.print("Wallet Balance is ");
+        Serial.print(data_balance);
+        Serial.println(" SXP");
+
+        // Convert balance from string to integer
+        // uint64_t walletBalance_Uint64 = strtoull(data_balance, NULL, 10);
+        // Serial.printf("%" PRIu64 "\n", walletBalance_Uint64);  // PRIx64 to print in hexadecimal
+        // Serial.println();
+
+        // walletBalance_Uint64 = (walletBalance_Uint64 / 100000000);
+        // Serial.printf("%" PRIu64 "\n", walletBalance_Uint64);  // PRIx64 to print in hexadecimal
+        // Serial.println();
+
+        char walletBalance[64 + 1];  //current balance string
+        char walletBalance_IntegerPart[56 + 1];
+        char walletBalance_FractionalPart[8 + 1];
+        char walletBalance_Formatted[64 + 1 + 1];  //create space for decimal
+
+        strcpy(walletBalance, data["balance"]);
+
+        strncpy(walletBalance_IntegerPart, walletBalance, (strlen(walletBalance) - 8));
+        walletBalance_IntegerPart[(strlen(walletBalance) - 8)] = '\0';
+
+        strncpy(walletBalance_FractionalPart, walletBalance + (strlen(walletBalance) - 8), 8);
+        walletBalance_FractionalPart[8] = '\0';  // null character manually added.  alternative: memset(walletBalance_FractionalPart, '\0', sizeof(walletBalance_FractionalPart));
+
+        strcpy(walletBalance_Formatted, walletBalance_IntegerPart);
+        strcat(walletBalance_Formatted, ".");
+        strcat(walletBalance_Formatted, walletBalance_FractionalPart);
+        Serial.print("walletBalance Formatted ");
+        Serial.println(walletBalance_Formatted);
+
+        tft->setCursor(0, 30);
+        tft->setTextFont(2);
+        tft->setTextSize(2);
+        tft->println("Balance");
+        tft->print(walletBalance_Formatted);
+        tft->println(" SXP");
+
+
+      } else {
+        Serial.print("Error code: ");
+        Serial.println(httpResponseCode);
+      }
+      // Free resources
+      http.end();
+    }
+  }
+}
+
 void UpdateBatteryStatus() {
   if (millis() - previousUpdateTime_Battery > UpdateInterval_Battery) {
     previousUpdateTime_Battery += UpdateInterval_Battery;
     tft->setCursor(3, 3);
     tft->setTextFont(2);
+    tft->setTextSize(1);
+    tft->print("BAT ");
     tft->print(power->getBattPercentage());
-    tft->print(" %       ");
+    tft->print("%          IP ");
 
     tft->print(WiFi.localIP());
   }
@@ -332,7 +425,8 @@ void UpdateBatteryStatus() {
 void setup() {
 
   Serial.begin(115200);  // Initialize Serial Connection for debug
-  while (!Serial && millis() < 20);  // wait 20ms for serial port adapter to power up
+  while (!Serial && millis() < 20)
+    ;  // wait 20ms for serial port adapter to power up
 
   Serial.println("\n\nStarting Simple_Solar_MQTT");
 
@@ -340,7 +434,8 @@ void setup() {
   ttgo->begin();
   ttgo->openBL();  // turn on back light
 
-  previousUpdateTime_Battery = millis() - UpdateInterval_Battery;  //turn back time so battery level updates the first time running through the main loop
+  // previousUpdateTime_Battery = millis() - UpdateInterval_Battery;  //turn back time so battery level updates the first time running through the main loop
+  //previousUpdateTime_Balance = millis() - UpdateInterval_Balance;  //turn back time so wallet Balance updates the first time running through the main loop
 
   power = ttgo->power;
   tft = ttgo->tft;
@@ -348,6 +443,7 @@ void setup() {
   tft->setCursor(3, 3);
   power->adc1Enable(AXP202_VBUS_VOL_ADC1 | AXP202_VBUS_CUR_ADC1 | AXP202_BATT_CUR_ADC1 | AXP202_BATT_VOL_ADC1, true);
   tft->setTextFont(2);
+  tft->setTextSize(1);
 
   // Optional Features of EspMQTTClient
   WiFiMQTTclient.enableDebuggingMessages();  // Enable MQTT debugging messages
@@ -377,4 +473,6 @@ void loop() {
 
   lv_task_handler();
   UpdateBatteryStatus();  //update battery status bar
+
+  GetBalance();
 }
