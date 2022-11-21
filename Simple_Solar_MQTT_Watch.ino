@@ -11,6 +11,8 @@
         Use TTGO T-Watch board
       EspMQTTClient by Patrick Lapointe Version 1.13.3
       ArduinoJson by Benoit Blanchon Version 6.19.4
+      ESParklines by 0xPIT
+      FixedPoints by Pharap Version 1.1.1
       PubSubClient by Nick O'Leary Version 2.8
         The MQTT JSON packets are larger then the default setting in the libary.
         You need to increase max packet size from 128 to 4096 via this line in \Arduino\libraries\PubSubClient\src\PubSubClient.h
@@ -32,9 +34,13 @@
 
 #include <ArduinoJson.h>  // JSON parsing
 
-#include "bitmap.h"  //Solar Logo bitmap stored in program memory
+#include "bitmap.h"  // Solar Logo bitmap stored in program memory
 
 #include <HTTPClient.h>  // http client
+
+#include "SparkLine.h"  // Sparkline graphing
+
+
 
 // RGB565 Color Definitions
 // This is a good tool for color conversions into RGB565 format
@@ -45,9 +51,14 @@
 uint32_t UpdateInterval_Battery = 10000;  // 10 seconds
 uint32_t previousUpdateTime_Battery = millis();
 
-//Frequency at which the Solar wallet baln is updated on the screen
+//Frequency at which the Solar wallet balance is updated on the screen
 uint32_t UpdateInterval_Balance = 60000;  // 60 seconds
 uint32_t previousUpdateTime_Balance = millis();
+
+//Frequency at which the Sparkline is updated on the screen
+uint32_t UpdateInterval_Sparkline = 5000;  // 60 seconds
+uint32_t previousUpdateTime_Sparkline = millis();
+
 
 /********************************************************************************
     Watch 2020 V1 Configuration
@@ -61,7 +72,12 @@ uint32_t previousUpdateTime_Balance = millis();
 
 TTGOClass* ttgo;
 TFT_eSPI* tft;
+
 AXP20X_Class* power;
+
+SparkLine<uint16_t> MySparkLine1(106, [&](const uint32_t x0, const uint32_t y0, const uint32_t x1, const uint32_t y1) {
+  tft->drawLine(x0, y0, x1, y1, TFT_GREEN);
+});
 
 void clearMainScreen() {
   tft->fillRect(0, 0, 240, 240, TFT_BLACK);  //clear the screen except for the status bar
@@ -129,6 +145,12 @@ void Block_Applied_Handler(const String& payload) {
   tft->setTextColor(SolarOrange, TFT_BLACK);
   tft->print("Block ");
   tft->print(data_height);
+
+    const uint8_t border = 2;
+    tft->fillRect(0, 95, 240, 55, TFT_BLACK);  //clear the area for chart. x,y is the top left corner
+    MySparkLine1.add(data_numberOfTransactions);
+    MySparkLine1.draw(border, 95+55, 240 - border - border, 55);   //x,y is bottom left corner
+
 }
 
 /********************************************************************************
@@ -154,7 +176,7 @@ void Transaction_Applied_Handler(const String& payload) {
 
   Serial.println();
 
-  tft->setCursor(0, 140);
+  tft->setCursor(0, 163);
   tft->setTextFont(2);
   tft->setTextSize(1);
   tft->setTextColor(SolarOrange, TFT_BLACK);
@@ -196,10 +218,6 @@ void Round_Missed_Handler(const String& payload) {
 
   Serial.println();
 
-  // tft->setCursor(225, 150);
-  // tft->print("Delegate ");
-  // tft->print(data_delegate_address);
-  // tft->print(" missed a block! ");
 }
 
 /********************************************************************************
@@ -452,7 +470,15 @@ void InitStatusBar() {
   tft->fillCircle(215, 215 + 8, 6, TFT_RED);  //x,y,radius,color  Solar Node Status
 }
 
-
+void UpdateSparkline() {
+  if (millis() - previousUpdateTime_Sparkline > UpdateInterval_Sparkline) {
+    previousUpdateTime_Sparkline += UpdateInterval_Sparkline;
+    const uint8_t border = 2;
+    tft->fillRect(0, 95, 240, 55, TFT_BLACK);  //clear the area for chart. x,y is the top left corner
+    MySparkLine1.add(random(0, 100));
+    MySparkLine1.draw(border, 95+55, 240 - border - border, 55);   //x,y is bottom left corner
+  }
+}
 
 /********************************************************************************
   Configure peripherals and system
@@ -490,6 +516,7 @@ void setup() {
   tft->setTextColor(SolarOrange, TFT_BLACK);
 
   InitStatusBar();
+
 }
 
 
@@ -507,7 +534,9 @@ void loop() {
   WiFiMQTTclient.loop();
 
   lv_task_handler();
+
   UpdateBatteryStatus();  //update battery status bar
 
-  GetBalance();
+  GetBalance();           //update wallet balance
+
 }
