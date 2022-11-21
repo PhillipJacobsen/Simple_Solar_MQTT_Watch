@@ -55,11 +55,6 @@ uint32_t previousUpdateTime_Battery = millis();
 uint32_t UpdateInterval_Balance = 60000;  // 60 seconds
 uint32_t previousUpdateTime_Balance = millis();
 
-//Frequency at which the Sparkline is updated on the screen
-uint32_t UpdateInterval_Sparkline = 5000;  // 60 seconds
-uint32_t previousUpdateTime_Sparkline = millis();
-
-
 /********************************************************************************
     Watch 2020 V1 Configuration
 ********************************************************************************/
@@ -80,7 +75,7 @@ SparkLine<uint16_t> MySparkLine1(106, [&](const uint32_t x0, const uint32_t y0, 
 });
 
 void clearMainScreen() {
-  tft->fillRect(0, 0, 240, 240, TFT_BLACK);  //clear the screen except for the status bar
+  tft->fillRect(0, 0, 240, 240, TFT_BLACK);  //clear the entire screen
 }
 
 void DisplaySolarBitmap() {
@@ -407,8 +402,7 @@ void GetBalance() {
 
         // Extract only 1 digits of precision
         strncpy(walletBalance_FractionalPart, walletBalance + (strlen(walletBalance) - 8), 1);
-        walletBalance_FractionalPart[1] = '\0';  // null character manually added.  alternative: memset(walletBalance_FractionalPart, '\0', sizeof(walletBalance_FractionalPart));
-
+        walletBalance_FractionalPart[1] = '\0';  // null character manually added. 
 
         strcpy(walletBalance_Formatted, walletBalance_IntegerPart);
         strcat(walletBalance_Formatted, ".");
@@ -489,7 +483,7 @@ void setup() {
   while (!Serial && millis() < 20)
     ;  // wait 20ms for serial port adapter to power up
 
-  Serial.println("\n\nStarting Simple_Solar_MQTT");
+  Serial.println("\n\nStarting Simple_Solar_MQTT_Watch");
 
   ttgo = TTGOClass::getWatch();
   ttgo->begin();
